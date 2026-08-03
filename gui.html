@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>MP3 合成器</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", "Segoe UI", sans-serif; background: #f0f2f5; color: #1f2329; }
+  .bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; background: #fff; border-bottom: 1px solid #e3e6ea; flex-wrap: wrap; }
+  .bar h1 { font-size: 18px; margin-right: 12px; white-space: nowrap; }
+  .bar input[type=text] { flex: 1; min-width: 240px; padding: 7px 10px; border: 1px solid #c9cdd3; border-radius: 6px; font-size: 14px; }
+  button { padding: 7px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; }
+  .btn-default { background: #1677ff; color: #fff; }
+  .btn-default:hover { background: #3a8bff; }
+  .btn-default:disabled { background: #a5c4f5; cursor: not-allowed; }
+  .btn-plain { background: #fff; border: 1px solid #c9cdd3; color: #333; }
+  .btn-plain:hover { background: #f5f6f8; }
+  .wrap { display: flex; gap: 14px; padding: 14px 16px; height: calc(100vh - 118px); }
+  .panel { background: #fff; border: 1px solid #e3e6ea; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; }
+  .panel-title { padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #eef0f2; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+  .file-panel { flex: 2; }
+  .sel-panel { flex: 1.4; }
+  .list { flex: 1; overflow-y: auto; padding: 6px 0; }
+  .row { display: flex; align-items: center; padding: 7px 14px; cursor: pointer; gap: 10px; font-size: 13px; }
+  .row:hover { background: #f5f7fa; }
+  .row.dir .icon { color: #f5a623; }
+  .row.mp3 .icon { color: #1677ff; }
+  .icon { width: 20px; text-align: center; }
+  .row .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .meta { color: #86909c; font-size: 12px; white-space: nowrap; }
+  .badge { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #eef3ff; color: #1677ff; white-space: nowrap; }
+  .badge.warn { background: #fff7e6; color: #d46b08; }
+  .empty { color: #86909c; text-align: center; padding: 40px 10px; font-size: 13px; }
+  .foot { padding: 10px 14px; border-top: 1px solid #eef0f2; display: flex; gap: 8px; align-items: center; }
+  #outPath { flex: 1; min-width: 160px; padding: 7px 10px; border: 1px solid #c9cdd3; border-radius: 6px; font-size: 13px; }
+  #log { font-family: Consolas, monospace; font-size: 12px; background: #14161a; color: #c9d1d9; margin: 0 14px 10px; padding: 10px 12px; border-radius: 8px; max-height: 130px; overflow-y: auto; white-space: pre-wrap; }
+  .sel-count { color: #86909c; font-size: 12px; }
+  .ok { color: #7ee787; }
+  .err { color: #ff7b72; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <h1>🎵 MP3 合成器</h1>
+  <input type="text" id="path" placeholder="输入或粘贴文件夹路径，回车跳转">
+  <button class="btn-plain" id="btnOpen">打开</button>
+  <button class="btn-plain" id="btnUp">上一级</button>
+  <button class="btn-plain" id="btnHome">主目录</button>
+  <select id="driveSel" title="选择盘符" style="padding:6px 8px;border:1px solid #c9cdd3;border-radius:6px;font-size:14px;background:#fff"></select>
+</div>
+
+<div class="wrap">
+  <div class="panel file-panel">
+    <div class="panel-title">
+      <span>歌曲文件夹</span>
+      <label class="sel-count"><input type="checkbox" id="selAll"> 全选</label>
+    </div>
+    <div class="list" id="fileList"><div class="empty">正在加载…</div></div>
+  </div>
+
+  <div class="panel sel-panel">
+    <div class="panel-title"><span>已选歌曲（合成顺序）</span><span class="sel-count" id="count"></span></div>
+    <div class="list" id="selList"><div class="empty">在左侧勾选歌曲</div></div>
+    <div class="foot" style="flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn-plain" id="btnPickOut" style="white-space:nowrap">📁 选择输出文件夹</button>
+        <button class="btn-plain" id="btnNewFolder" style="white-space:nowrap">➕ 新建文件夹</button>
+        <button class="btn-plain" id="btnPickDefault" style="white-space:nowrap">默认</button>
+      </div>
+      <input type="text" id="outPath" placeholder="输出文件路径（点击上方按钮选择，也可直接修改文件名）" title="输出文件路径，同名会自动加序号不覆盖">
+      <div style="display:flex;gap:8px;align-items:center;font-size:13px">
+        <span style="color:#555;white-space:nowrap">衔接方式</span>
+        <select id="fadeSel" title="歌曲之间的衔接方式" style="flex:1;padding:6px 8px;border:1px solid #c9cdd3;border-radius:6px;font-size:13px;background:#fff">
+          <option value="0">直接拼接（无损、最快）</option>
+          <option value="1">淡出淡入 1 秒</option>
+          <option value="2" selected>淡出淡入 2 秒（推荐）</option>
+          <option value="3">淡出淡入 3 秒</option>
+          <option value="5">淡出淡入 5 秒</option>
+        </select>
+      </div>
+    </div>
+    <div class="foot" style="border-top:none;padding-top:0">
+      <button class="btn-default" id="btnMerge" style="flex:1">合成新歌曲</button>
+    </div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<!-- 输出文件夹选择面板（自绘，纯网页，不依赖系统对话框） -->
+<div id="pickModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;align-items:center;justify-content:center">
+  <div style="background:#fff;border-radius:12px;width:620px;max-width:92vw;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+    <div class="panel-title">
+      <span>📁 选择输出文件夹</span>
+      <button class="btn-plain" id="pickClose" style="padding:3px 10px">✕</button>
+    </div>
+    <div class="bar" style="border:none;padding:10px 14px;flex-wrap:wrap">
+      <input type="text" id="pickPath" placeholder="当前目录，可输入路径后回车跳转" style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #c9cdd3;border-radius:6px;font-size:13px">
+      <button class="btn-plain" id="pickGo">打开</button>
+      <button class="btn-plain" id="pickUp">上一级</button>
+      <button class="btn-plain" id="pickHome">主目录</button>
+      <span id="pickDrives" title="盘符"></span>
+    </div>
+    <div class="list" id="pickList" style="flex:1;min-height:200px;max-height:40vh"><div class="empty">正在加载…</div></div>
+    <div class="foot" style="justify-content:flex-end;border-top:1px solid #eef0f2">
+      <span id="pickHint" style="color:#86909c;font-size:12px;flex:1">选择后输出文件为: 所选文件夹/merged.mp3</span>
+      <button class="btn-plain" id="pickCancel">取消</button>
+      <button class="btn-default" id="pickOK">选择此文件夹</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+var currentDir = '';
+var selected = {}; // path -> {name,size}
+var selOrder = [];
+
+function $(id){ return document.getElementById(id); }
+
+function fmtSize(n){
+  if(n==null) return '-';
+  if(n>=1024*1024*1024) return (n/1024/1024/1024).toFixed(2)+' GB';
+  if(n>=1024*1024) return (n/1024/1024).toFixed(1)+' MB';
+  if(n>=1024) return (n/1024).toFixed(1)+' KB';
+  return n+' B';
+}
+
+function infoBadge(info){
+  if(!info) return '<span class="badge warn">无法解析</span>';
+  var ch = ['立体声','联合','双声道','单声道'][info.ch];
+  return '<span class="badge">MPEG'+info.ver+' '+info.sr/1000+'kHz '+(info.br||'VBR')+'k '+ch+'</span>';
+}
+
+function attrEscape(s){
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+function textEscape(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderSel(){
+  var list = $('selList');
+  $('count').textContent = selOrder.length + ' 首';
+  if(selOrder.length===0){ list.innerHTML = '<div class="empty">在左侧勾选歌曲</div>'; return; }
+  var html = '';
+  selOrder.forEach(function(p, i){
+    var s = selected[p];
+    var upBtn = i===0 ? '<span style="width:24px"></span>'
+      : '<span style="cursor:pointer;color:#1677ff" data-up="'+i+'" title="上移">▲</span>';
+    var downBtn = i===selOrder.length-1 ? '<span style="width:24px"></span>'
+      : '<span style="cursor:pointer;color:#1677ff" data-down="'+i+'" title="下移">▼</span>';
+    html += '<div class="row" data-sel="'+i+'">' +
+      '<span class="meta" style="width:26px;color:#86909c;font-weight:600">'+(i+1)+'.</span>' +
+      '<span class="icon">🎵</span><span class="name">'+textEscape(s.name)+'</span>' +
+      '<span class="meta">'+fmtSize(s.size)+'</span>' +
+      upBtn + downBtn +
+      '<span class="meta" style="cursor:pointer;color:#d4380d" data-del="'+i+'" title="移除">✕</span></div>';
+  });
+  list.innerHTML = html;
+}
+
+// 调整合成顺序：上移/下移
+function moveSel(from, to){
+  if(to<0 || to>=selOrder.length) return;
+  var tmp = selOrder[from];
+  selOrder[from] = selOrder[to];
+  selOrder[to] = tmp;
+  renderSel();
+}
+
+function syncAllCheckbox(){
+  var cbs = document.querySelectorAll('#fileList input[type=checkbox]');
+  var all = cbs.length>0;
+  cbs.forEach(function(cb){ if(!cb.checked) all = false; });
+  $('selAll').checked = all;
+}
+
+function renderList(d){
+  var list = $('fileList');
+  if(d.folders.length===0 && d.songs.length===0){
+    list.innerHTML = '<div class="empty">该文件夹没有内容</div>';
+    syncAllCheckbox();
+    return;
+  }
+  var html = '';
+  d.folders.forEach(function(f){
+    html += '<div class="row dir" data-dir="'+attrEscape(f.path)+'">' +
+      '<span class="icon">📁</span><span class="name">'+textEscape(f.name)+'</span><span class="meta">文件夹</span></div>';
+  });
+  d.songs.forEach(function(s){
+    var checked = selected[s.path] ? 'checked' : '';
+    html += '<div class="row mp3" data-file="'+attrEscape(s.path)+'">' +
+      '<span class="icon">🎵</span>' +
+      '<input type="checkbox" '+checked+'>' +
+      '<span class="name">'+textEscape(s.name)+'</span>' + infoBadge(s.info) +
+      '<span class="meta">'+fmtSize(s.size)+'</span></div>';
+  });
+  list.innerHTML = html;
+  syncAllCheckbox();
+  renderSel();
+}
+
+function loadDir(dir){
+  fetch('/api/browse?dir='+encodeURIComponent(dir))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(!d.ok){ alert(d.error||'加载失败'); return; }
+      currentDir = d.dir;
+      $('path').value = d.dir;
+      renderList(d);
+      if(!$('outPath').value){
+        // 盘符根目录（如 C:\）通常不可写，默认输出改到用户主目录
+        if(/^[a-zA-Z]:[\\/]*$/.test(d.dir)){
+          $('outPath').value = (d.home || 'C:/Users').replace(/\\/g,'/') + '/merged.mp3';
+        } else {
+          $('outPath').value = d.dir.replace(/\\/g,'/') + '/merged.mp3';
+        }
+      }
+    })
+    .catch(function(e){ alert('加载失败: '+e.message); });
+}
+
+// ---- 事件绑定 ----
+$('btnOpen').addEventListener('click', function(){ var p = $('path').value.trim(); if(p) loadDir(p); });
+$('path').addEventListener('keydown', function(e){ if(e.key==='Enter'){ var p = $('path').value.trim(); if(p) loadDir(p); } });
+
+// 选择输出文件夹（自绘面板，纯网页）
+$('btnPickOut').addEventListener('click', function(){ openPickPanel(); });
+
+// 新建文件夹：弹命名框 → 在输出面板当前目录下创建并进入
+$('btnNewFolder').addEventListener('click', function(){
+  if(!currentDir){ alert('请先进入一个文件夹'); return; }
+  var name = prompt('请输入新文件夹名称：', '串烧');
+  if(name === null) return;                    // 用户取消
+  name = name.trim();
+  if(!name){ alert('文件夹名称不能为空'); return; }
+  if(/[\\/:*?"<>|]/.test(name)){ alert('名称不能包含字符: \\ / : * ? " < > |'); return; }
+  var target = currentDir.replace(/[\\/]+$/,'') + '\\' + name;
+  fetch('/api/mkdir?dir='+encodeURIComponent(target))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok){
+        loadDir(d.dir);
+        $('outPath').value = d.dir.replace(/\\/g,'/') + '/merged.mp3';
+        alert('已创建文件夹并设为输出目录:\n' + d.dir);
+      } else {
+        alert('创建失败: ' + (d.error||'未知错误'));
+      }
+    })
+    .catch(function(e){ alert('创建失败: ' + e.message); });
+});
+
+// 恢复默认：当前浏览的文件夹/merged.mp3
+$('btnPickDefault').addEventListener('click', function(){
+  if(!currentDir){ alert('请先进入歌曲文件夹'); return; }
+  $('outPath').value = currentDir.replace(/\\/g,'/') + '/merged.mp3';
+});
+$('btnUp').addEventListener('click', function(){
+  if(!currentDir) return;
+  var up = currentDir.replace(/[\\/]+[^\\/]*$/, '');
+  if(up && up!==currentDir) loadDir(up);
+});
+$('btnHome').addEventListener('click', function(){
+  fetch('/api/homedir').then(function(r){ return r.json(); }).then(function(d){ loadDir(d.home); });
+});
+// 动态加载所有盘符（主界面下拉 + 输出面板按钮组）
+function loadDrives(){
+  fetch('/api/drives').then(function(r){ return r.json(); }).then(function(d){
+    if(!d.ok || !d.drives || d.drives.length===0) return;
+    // 主界面下拉
+    var sel = $('driveSel');
+    var prev = sel.value;
+    sel.innerHTML = '';
+    d.drives.forEach(function(drv){
+      var o = document.createElement('option');
+      o.value = drv; o.textContent = drv;
+      sel.appendChild(o);
+    });
+    // 输出面板按钮组
+    var span = $('pickDrives');
+    span.innerHTML = '';
+    d.drives.forEach(function(drv){
+      var b = document.createElement('button');
+      b.className = 'btn-plain';
+      b.style.cssText = 'padding:5px 10px;font-size:13px';
+      b.textContent = drv;
+      b.addEventListener('click', function(){ loadPickDir(drv + '\\'); });
+      span.appendChild(b);
+    });
+    if(prev) sel.value = prev;
+  }).catch(function(){});
+}
+$('driveSel').addEventListener('change', function(){ if(this.value) loadDir(this.value + '\\'); });
+
+$('selAll').addEventListener('change', function(){
+  var all = this.checked;
+  var cbs = document.querySelectorAll('#fileList input[type=checkbox]');
+  cbs.forEach(function(cb){
+    var row = cb.closest('.row');
+    var p = row.dataset.file;
+    if(all){
+      if(!selected[p]){ selected[p] = { name: row.querySelector('.name').textContent, size: null }; selOrder.push(p); }
+      cb.checked = true;
+    } else {
+      if(selected[p]){ delete selected[p]; var i = selOrder.indexOf(p); if(i>=0) selOrder.splice(i,1); }
+      cb.checked = false;
+    }
+  });
+  renderSel();
+});
+
+// 文件列表点击事件委托
+$('fileList').addEventListener('click', function(e){
+  var t = e.target;
+  var dirRow = t.closest('.row.dir');
+  if(dirRow){ loadDir(dirRow.dataset.dir); return; }
+  var mp3Row = t.closest('.row.mp3');
+  if(mp3Row){
+    var cb = mp3Row.querySelector('input[type=checkbox]');
+    if(t !== cb) cb.click();
+  }
+});
+$('fileList').addEventListener('change', function(e){
+  var t = e.target;
+  if(t.type !== 'checkbox') return;
+  var row = t.closest('.row.mp3');
+  var p = row.dataset.file;
+  if(t.checked){
+    if(!selected[p]){ selected[p] = { name: row.querySelector('.name').textContent, size: null }; selOrder.push(p); }
+  } else {
+    if(selected[p]){ delete selected[p]; var i = selOrder.indexOf(p); if(i>=0) selOrder.splice(i,1); }
+  }
+  syncAllCheckbox();
+  renderSel();
+});
+
+// 已选列表点击（上移/下移/删除）
+$('selList').addEventListener('click', function(e){
+  var t = e.target;
+  var up = t.closest('[data-up]');
+  if(up){ var ui = parseInt(up.dataset.up, 10); moveSel(ui, ui-1); return; }
+  var down = t.closest('[data-down]');
+  if(down){ var di = parseInt(down.dataset.down, 10); moveSel(di, di+1); return; }
+  var del = t.closest('[data-del]');
+  if(!del) return;
+  var idx = parseInt(del.dataset.del, 10);
+  var p = selOrder[idx];
+  if(selected[p]){ delete selected[p]; selOrder.splice(idx,1); }
+  // 同步左侧勾选
+  var cb = document.querySelector('#fileList .row[data-file="'+attrEscape(p)+'"] input[type=checkbox]');
+  if(cb) cb.checked = false;
+  syncAllCheckbox();
+  renderSel();
+});
+
+function logMsg(t, cls){
+  var log = $('log');
+  log.textContent = t;
+  log.className = cls || '';
+}
+
+$('btnMerge').addEventListener('click', function(){
+  if(selOrder.length===0){ alert('请先在左侧勾选歌曲'); return; }
+  var files = selOrder.slice();
+  var out = $('outPath').value.trim();
+  if(!out){ alert('请先选择输出文件夹'); return; }
+  // 命名提示框：输入生成的歌曲名称（默认取当前输出文件名）
+  var curName = out.replace(/\\/g,'/').split('/').pop() || 'merged';
+  curName = curName.replace(/\.mp3$/i, '');
+  var songName = prompt('请输入生成的歌曲名称（将保存为 "名称.mp3"）：', curName);
+  if(songName === null) return;                // 用户取消，不合成
+  songName = songName.trim();
+  if(!songName){ alert('歌曲名称不能为空'); return; }
+  if(/[\\/:*?"<>|]/.test(songName)){ alert('名称不能包含字符: \\ / : * ? " < > |'); return; }
+  // 用新名称替换输出路径中的文件名部分
+  var outDirPart = out.replace(/[\\/][^\\/]*$/, '');
+  out = outDirPart + '/' + songName + '.mp3';
+  $('outPath').value = out;
+  var fade = $('fadeSel').value;
+  var btn = $('btnMerge');
+  btn.disabled = true;
+  btn.textContent = '合成中…' + (fade>0 ? '（淡出淡入 '+fade+' 秒，FFmpeg 处理中）' : '（无损拼接快，参数不一致时 FFmpeg 重编码较慢）');
+  logMsg('正在合成 ' + files.length + ' 首歌曲 → ' + out + ' ...');
+  fetch('/api/merge', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ files: files, out: out, fade: Number(fade) })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(d){
+    if(d.ok){
+      var mode = d.mode==='lossless' ? '无损直拼'
+        : d.mode==='fadeoutin' ? ('淡出淡入 ' + d.fadeSec + ' 秒（FFmpeg，不重叠）')
+        : 'FFmpeg 重编码';
+      var t = '✓ 合成完成（' + mode + '）\n';
+      t += '  输出: ' + d.out + '\n';
+      t += '  大小: ' + fmtSize(d.bytes) + (d.frames ? ' | 帧数: ' + d.frames : '') + (d.durSec ? ' | 时长: ' + (d.durSec/60).toFixed(1) + ' 分钟' : '') + '\n';
+      t += '  耗时: ' + d.elapsed + ' 秒' + (d.groups>1 ? '（检测到 ' + d.groups + ' 组不同参数）' : '');
+      // 同名文件已存在时服务端自动加序号改名
+      if(out !== d.out && d.out){
+        t += '\n  ⚠ 原路径已有同名文件，已自动保存为: ' + d.out;
+      }
+      if(d.skipped.length) t += '\n  已跳过无法解析: ' + d.skipped.join(', ');
+      logMsg(t, 'ok');
+    } else {
+      logMsg('✗ 失败: ' + (d.error||'未知错误'), 'err');
+    }
+  })
+  .catch(function(e){ logMsg('✗ 请求失败: ' + e.message, 'err'); })
+  .finally(function(){
+    btn.disabled = false;
+    btn.textContent = '合成新歌曲';
+  });
+});
+
+// ---- 输出文件夹选择面板 ----
+var pickDir = '';
+function openPickPanel(){
+  pickDir = currentDir || 'C:\\';
+  $('pickModal').style.display = 'flex';
+  loadPickDir(pickDir);
+}
+function closePickPanel(){ $('pickModal').style.display = 'none'; }
+
+function loadPickDir(dir, autoCreate){
+  pickDir = dir;
+  $('pickPath').value = dir;
+  fetch('/api/browse?dir='+encodeURIComponent(dir))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var list = $('pickList');
+      if(!d.ok){
+        // 目录不存在：若在"自动创建"流程中则直接创建，否则询问
+        if(autoCreate){
+          return createPickDir(dir);
+        }
+        list.innerHTML = '<div class="empty">该目录不存在</div>';
+        if(d.error && /目录不存在/.test(d.error)){
+          if(confirm('目录 "' + dir + '" 不存在，是否自动创建？')){
+            createPickDir(dir);
+          }
+        } else {
+          list.innerHTML = '<div class="empty">'+attrEscape(d.error||'加载失败')+'</div>';
+        }
+        return;
+      }
+      if(d.folders.length===0){ list.innerHTML = '<div class="empty">该文件夹没有子文件夹</div>'; return; }
+      var html = '';
+      d.folders.forEach(function(f){
+        html += '<div class="row dir" data-pick-dir="'+attrEscape(f.path)+'">' +
+          '<span class="icon">📁</span><span class="name">'+textEscape(f.name)+'</span><span class="meta">文件夹</span></div>';
+      });
+      list.innerHTML = html;
+    })
+    .catch(function(e){ $('pickList').innerHTML = '<div class="empty">加载失败: '+attrEscape(e.message)+'</div>'; });
+}
+
+// 创建目录（如 E:/串烧）并进入
+function createPickDir(dir){
+  fetch('/api/mkdir?dir='+encodeURIComponent(dir))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.ok){
+        loadPickDir(d.dir); // 创建成功，正常加载
+      } else {
+        $('pickList').innerHTML = '<div class="empty">创建失败: '+attrEscape(d.error||'')+'</div>';
+        alert('创建目录失败: ' + (d.error||''));
+      }
+    })
+    .catch(function(e){ alert('创建目录失败: ' + e.message); });
+}
+
+function confirmPickDir(){
+  var dir = pickDir;
+  if(/^[a-zA-Z]:[\\/]*$/.test(dir)){
+    // 盘符根目录（如 C:\）不可写：提示并自动改为主目录
+    return fetch('/api/homedir').then(function(r){ return r.json(); }).then(function(h){
+      var home = (h.home || 'C:/Users').replace(/\\/g,'/');
+      $('outPath').value = home + '/merged.mp3';
+      alert('当前输出路径为 ' + dir + '（盘符根目录通常没有写入权限）\n已自动改为: ' + $('outPath').value);
+    }).then(closePickPanel);
+  }
+  $('outPath').value = dir.replace(/\\/g,'/') + '/merged.mp3';
+  closePickPanel();
+}
+
+// 面板内点击目录（进入），双击确认
+$('pickList').addEventListener('click', function(e){
+  var t = e.target;
+  var row = t.closest('[data-pick-dir]');
+  if(!row) return;
+  loadPickDir(row.dataset.pickDir);
+});
+$('pickList').addEventListener('dblclick', function(e){
+  var t = e.target;
+  var row = t.closest('[data-pick-dir]');
+  if(!row) return;
+  loadPickDir(row.dataset.pickDir);
+  setTimeout(confirmPickDir, 50);
+});
+
+$('pickClose').addEventListener('click', closePickPanel);
+$('pickCancel').addEventListener('click', closePickPanel);
+$('pickOK').addEventListener('click', confirmPickDir);
+$('pickGo').addEventListener('click', function(){ var p = $('pickPath').value.trim(); if(p) loadPickDir(p); });
+$('pickPath').addEventListener('keydown', function(e){ if(e.key==='Enter'){ var p = $('pickPath').value.trim(); if(p) loadPickDir(p); } });
+$('pickUp').addEventListener('click', function(){
+  var up = pickDir.replace(/[\\/]+[^\\/]*$/, '');
+  if(up && up!==pickDir) loadPickDir(up);
+});
+$('pickHome').addEventListener('click', function(){
+  fetch('/api/homedir').then(function(r){ return r.json(); }).then(function(d){ loadPickDir(d.home); });
+});
+
+// 启动
+loadDrives();
+loadDir('C:\\');
+</script>
+</body>
+</html>

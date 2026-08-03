@@ -1,0 +1,7 @@
+# 运行时（体积大，不纳入版本控制）
+runtime/
+node_modules/
+服务.pid
+pickfolder-result.txt
+启动日志.txt
+.git/
